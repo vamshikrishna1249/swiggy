@@ -98,11 +98,19 @@ export const AuthProvider = ({ children }) => {
     // Real Supabase login
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('Email not confirmed')) {
+          throw new Error('Please verify your email or use the Demo Credentials above.');
+        }
+        if (error.message.includes('Invalid login credentials')) {
+          throw new Error('Invalid email or password. Try the Demo Credentials!');
+        }
+        throw error;
+      }
       return data;
     } catch (err) {
       if (err.message?.includes('fetch') || err.message?.includes('network')) {
-        throw new Error('Cannot connect to server. Use demo credentials instead: admin@swiggy.com / admin123');
+        throw new Error('Server connection slow. Please use Demo Credentials for now.');
       }
       throw err;
     }
@@ -112,12 +120,19 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
+      
       if (data.user) {
         await supabase.from('profiles').upsert([{
           id: data.user.id, name, email, phone, role: 'user',
         }], { onConflict: 'id' });
       }
-      return data;
+
+      // If email confirmation is ON, users won't be logged in yet
+      if (data.session) {
+        return data;
+      } else {
+        throw new Error('Signup successful! Please check your email to verify your account.');
+      }
     } catch (err) {
       if (err.message?.includes('fetch') || err.message?.includes('network')) {
         throw new Error('Cannot connect. Try demo login: user@swiggy.com / user123');
