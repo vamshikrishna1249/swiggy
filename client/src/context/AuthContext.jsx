@@ -10,37 +10,33 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = async (userId) => {
     try {
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       if (data) setProfile(data);
       return data;
     } catch { return null; }
   };
 
-  // ── Init — check localStorage for real session ───────────────────────────
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
-      // Check saved Supabase token (just localStorage check)
       const sbToken = localStorage.getItem('sb-token');
       if (!sbToken) {
         if (mounted) setLoading(false);
         return;
       }
 
-      // Try Supabase (3s timeout)
       try {
-        const timeout = new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3000));
-        const { data: { session } } = await Promise.race([supabase.auth.getSession(), timeout]);
+        // Removed the strict 3s timeout to allow Supabase to wake up
+        const { data: { session } } = await supabase.auth.getSession();
         if (session && mounted) {
           setUser(session.user);
           await fetchProfile(session.user.id);
         } else if (mounted) {
           localStorage.removeItem('sb-token');
         }
-      } catch {
-        // Fallback: use stale session if network is just temporarily down
-        // but for a clean app we'll let it be.
+      } catch (err) {
+        console.error('Auth init error:', err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -57,32 +53,21 @@ export const AuthProvider = ({ children }) => {
       } else {
         setUser(null); setProfile(null);
         localStorage.removeItem('sb-token');
-        localStorage.removeItem('demo-session');
       }
     });
 
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
-  // ── Auth methods ──────────────────────────────────────────────────────────
   const signIn = async ({ email, password }) => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        if (error.message.includes('Email not confirmed')) {
-          throw new Error('Please verify your email to log in.');
-        }
-        if (error.message.includes('Invalid login credentials')) {
-          throw new Error('Invalid email or password.');
-        }
-        throw error;
-      }
+      if (error) throw error;
       return data;
     } catch (err) {
-      if (err.message?.includes('fetch') || err.message?.includes('network')) {
-        throw new Error('Connection error. Please check your internet.');
-      }
-      throw err;
+      // Show the ACTUAL error message to the user for debugging
+      console.error('Login error:', err);
+      throw new Error(err.message || 'Login failed. Please check your internet.');
     }
   };
 
@@ -92,21 +77,19 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       
       if (data.user) {
-        await supabase.from('profiles').upsert([{
+        // Insert into profiles
+        const { error: pError } = await supabase.from('profiles').upsert([{
           id: data.user.id, name, email, phone, role: 'user',
         }], { onConflict: 'id' });
+        
+        if (pError) console.warn('Profile sync error:', pError.message);
       }
 
-      if (data.session) {
-        return data;
-      } else {
-        throw new Error('Signup successful! Please check your email to verify your account.');
-      }
+      if (data.session) return data;
+      else throw new Error('Signup successful! Please verify your email if required.');
     } catch (err) {
-      if (err.message?.includes('fetch') || err.message?.includes('network')) {
-        throw new Error('Connection error. Please try again later.');
-      }
-      throw err;
+      console.error('Signup error:', err);
+      throw new Error(err.message || 'Signup failed. Please try again.');
     }
   };
 
@@ -121,7 +104,6 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     localStorage.removeItem('sb-token');
-    localStorage.removeItem('demo-session');
     try { await supabase.auth.signOut(); } catch {}
     setUser(null);
     setProfile(null);
