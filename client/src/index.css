@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+  body {
+    @apply font-sans text-gray-800 bg-white antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white px-6 py-2.5 rounded-lg font-semibold 
+           hover:bg-primary-600 active:scale-95 transition-all duration-200 
+           shadow-primary hover:shadow-lg focus:outline-none focus:ring-2 
+           focus:ring-primary-400 focus:ring-offset-2;
+  }
+  .btn-outline {
+    @apply border-2 border-primary text-primary px-6 py-2.5 rounded-lg font-semibold 
+           hover:bg-primary hover:text-white active:scale-95 transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2;
+  }
+  .btn-ghost {
+    @apply text-gray-600 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 
+           active:scale-95 transition-all duration-200;
+  }
+  .input-field {
+    @apply w-full px-4 py-3 border border-gray-200 rounded-xl text-sm
+           focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20
+           placeholder:text-gray-400 transition-all duration-200 bg-white;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-card hover:shadow-card-hover 
+           transition-all duration-300 overflow-hidden;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold;
+  }
+  .skeleton {
+    @apply bg-gray-200 rounded animate-pulse;
+  }
+  .section-title {
+    @apply text-2xl font-bold text-gray-900 mb-1;
+  }
+  .section-subtitle {
+    @apply text-gray-500 text-sm mb-6;
+  }
+  .nav-link {
+    @apply text-gray-600 hover:text-primary font-medium transition-colors duration-200;
+  }
+  .tag-chip {
+    @apply px-3 py-1.5 bg-orange-50 text-primary border border-orange-100 
+           rounded-full text-sm font-medium cursor-pointer hover:bg-primary 
+           hover:text-white transition-all duration-200;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #FC8019;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #ea6b00;
+}
+
+/* Smooth scrolling for carousels */
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}
+.scroll-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Toast overrides */
+.Toastify__toast {
+  font-family: 'Poppins', sans-serif !important;
+  border-radius: 12px !important;
+}
+
+/* Page transition */
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: all 300ms ease-out;
+}
