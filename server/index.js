@@ -10,25 +10,12 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware — allow localhost dev + any Vercel deployment URL
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:4173',
-  process.env.CLIENT_URL,
-].filter(Boolean);
-
+// Middleware — open CORS for demo/portfolio app
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    // Allow any vercel.app subdomain
-    if (origin.endsWith('.vercel.app') || ALLOWED_ORIGINS.includes(origin)) {
-      return callback(null, true);
-    }
-    callback(new Error(`CORS: origin ${origin} not allowed`));
-  },
+  origin: true,   // allow ALL origins
   credentials: true,
 }));
+
 app.use(express.json());
 
 // Health check

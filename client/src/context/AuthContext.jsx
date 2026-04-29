@@ -3,23 +3,18 @@ import { supabase } from '../lib/supabase';
 
 const AuthContext = createContext(null);
 
-// ── Demo credentials (work without Supabase) ─────────────────────────────────
+// ── Demo credentials (work 100% offline, no Supabase needed) ─────────────────
 const DEMO_ADMIN  = { id: 'demo-admin',  email: 'admin@swiggy.com',  password: 'admin123',  name: 'Admin User',  role: 'admin' };
 const DEMO_USER   = { id: 'demo-user',   email: 'user@swiggy.com',   password: 'user123',   name: 'Demo User',   role: 'user'  };
 const DEMO_ACCOUNTS = [DEMO_ADMIN, DEMO_USER];
-
-const makeDemoSession = (acc) => ({
-  id: acc.id, email: acc.email, name: acc.name, role: acc.role,
-});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ── helpers ──────────────────────────────────────────────────────────────
   const applyDemoSession = (acc) => {
-    const p = makeDemoSession(acc);
+    const p = { id: acc.id, email: acc.email, name: acc.name, role: acc.role };
     setUser(p);
     setProfile(p);
     localStorage.setItem('demo-session', JSON.stringify(p));
@@ -27,40 +22,48 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = async (userId) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles').select('*').eq('id', userId).maybeSingle();
-      if (error) return null;
-      setProfile(data);
+      const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (data) setProfile(data);
       return data;
     } catch { return null; }
   };
 
-  // ── init ──────────────────────────────────────────────────────────────────
+  // ── Init — check localStorage FIRST, instant, no network ─────────────────
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
-      // 1. Check demo session first (instant)
+      // 1. Check saved demo session instantly (no network)
       const saved = localStorage.getItem('demo-session');
       if (saved) {
         try {
           const p = JSON.parse(saved);
           if (mounted) { setUser(p); setProfile(p); setLoading(false); }
-          return;
-        } catch {}
+          return; // done — no need to hit Supabase
+        } catch { localStorage.removeItem('demo-session'); }
       }
 
-      // 2. Try real Supabase session with 5-second timeout
+      // 2. Check saved Supabase token (no network, just localStorage)
+      const sbToken = localStorage.getItem('sb-token');
+      if (!sbToken) {
+        // No session of any kind — go to login
+        if (mounted) setLoading(false);
+        return;
+      }
+
+      // 3. Only if we have a real token, try Supabase (3s timeout)
       try {
-        const timeout  = new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 5000));
+        const timeout = new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3000));
         const { data: { session } } = await Promise.race([supabase.auth.getSession(), timeout]);
         if (session && mounted) {
           setUser(session.user);
-          localStorage.setItem('sb-token', session.access_token);
           await fetchProfile(session.user.id);
+        } else if (mounted) {
+          localStorage.removeItem('sb-token');
         }
-      } catch (err) {
-        console.warn('Auth init:', err.message);
+      } catch {
+        // Supabase unreachable — clear stale token
+        localStorage.removeItem('sb-token');
       } finally {
         if (mounted) setLoading(false);
       }
@@ -68,15 +71,15 @@ export const AuthProvider = ({ children }) => {
 
     init();
 
+    // Listen for real Supabase auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
+      if (!mounted || localStorage.getItem('demo-session')) return;
       if (session) {
         setUser(session.user);
         localStorage.setItem('sb-token', session.access_token);
         await fetchProfile(session.user.id);
-      } else if (!localStorage.getItem('demo-session')) {
-        setUser(null);
-        setProfile(null);
+      } else {
+        setUser(null); setProfile(null);
         localStorage.removeItem('sb-token');
       }
     });
@@ -84,29 +87,43 @@ export const AuthProvider = ({ children }) => {
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
-  // ── auth methods ──────────────────────────────────────────────────────────
+  // ── Auth methods ──────────────────────────────────────────────────────────
   const signIn = async ({ email, password }) => {
-    // Check demo accounts first
+    // Demo accounts — instant, no network required
     const demo = DEMO_ACCOUNTS.find(
       a => a.email.toLowerCase() === email.toLowerCase() && a.password === password
     );
     if (demo) { applyDemoSession(demo); return { user: demo }; }
 
     // Real Supabase login
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      if (err.message?.includes('fetch') || err.message?.includes('network')) {
+        throw new Error('Cannot connect to server. Use demo credentials instead: admin@swiggy.com / admin123');
+      }
+      throw err;
+    }
   };
 
   const signUp = async ({ email, password, name, phone }) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-    if (data.user) {
-      await supabase.from('profiles').upsert([{
-        id: data.user.id, name, email, phone, role: 'user',
-      }], { onConflict: 'id' });
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data.user) {
+        await supabase.from('profiles').upsert([{
+          id: data.user.id, name, email, phone, role: 'user',
+        }], { onConflict: 'id' });
+      }
+      return data;
+    } catch (err) {
+      if (err.message?.includes('fetch') || err.message?.includes('network')) {
+        throw new Error('Cannot connect. Try demo login: user@swiggy.com / user123');
+      }
+      throw err;
     }
-    return data;
   };
 
   const signInWithGoogle = async () => {
@@ -127,7 +144,6 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateProfile = async (updates) => {
-    // Demo mode
     if (user?.id?.startsWith('demo-')) {
       const updated = { ...profile, ...updates };
       setProfile(updated);
