@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 
@@ -30,15 +30,9 @@ const Login = () => {
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
     try {
-      const result = await signIn(form);
-      const role = result?.user?.role || result?.user?.user_metadata?.role;
+      await signIn(form);
       toast.success('Welcome back! 🎉');
-      // Redirect admins to admin panel
-      if (form.email.toLowerCase() === 'admin@swiggy.com') {
-        navigate('/admin', { replace: true });
-      } else {
-        navigate(from === '/login' ? '/home' : from, { replace: true });
-      }
+      navigate(from === '/login' ? '/home' : from, { replace: true });
     } catch (err) {
       toast.error(err.message || 'Login failed. Check your credentials.');
     } finally {
@@ -49,12 +43,6 @@ const Login = () => {
   const handleGoogle = async () => {
     try { await signInWithGoogle(); }
     catch (err) { toast.error(err.message || 'Google sign-in failed'); }
-  };
-
-  const fillDemo = (type) => {
-    if (type === 'admin') setForm({ email: 'admin@swiggy.com', password: 'admin123' });
-    else setForm({ email: 'user@swiggy.com', password: 'user123' });
-    setErrors({});
   };
 
   return (
@@ -70,33 +58,6 @@ const Login = () => {
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Welcome back!</h1>
           <p className="text-gray-500 text-sm mt-1">Sign in to your account to continue</p>
-        </div>
-
-        {/* Demo credentials banner */}
-        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-4 mb-5 text-white shadow-lg">
-          <div className="flex items-center gap-2 mb-3">
-            <ShieldCheck size={18} />
-            <span className="font-bold text-sm">Demo Credentials</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => fillDemo('admin')}
-              className="bg-white/20 hover:bg-white/30 rounded-xl p-2.5 text-left transition-colors"
-            >
-              <p className="font-bold text-xs">👑 Admin Login</p>
-              <p className="text-xs opacity-80 mt-0.5">admin@swiggy.com</p>
-              <p className="text-xs opacity-80">admin123</p>
-            </button>
-            <button
-              onClick={() => fillDemo('user')}
-              className="bg-white/20 hover:bg-white/30 rounded-xl p-2.5 text-left transition-colors"
-            >
-              <p className="font-bold text-xs">👤 User Login</p>
-              <p className="text-xs opacity-80 mt-0.5">user@swiggy.com</p>
-              <p className="text-xs opacity-80">user123</p>
-            </button>
-          </div>
-          <p className="text-xs opacity-70 mt-2">↑ Click a card to auto-fill credentials</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100 animate-slide-up">

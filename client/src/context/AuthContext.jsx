@@ -3,22 +3,10 @@ import { supabase } from '../lib/supabase';
 
 const AuthContext = createContext(null);
 
-// ── Demo credentials (work 100% offline, no Supabase needed) ─────────────────
-const DEMO_ADMIN  = { id: 'demo-admin',  email: 'admin@swiggy.com',  password: 'admin123',  name: 'Admin User',  role: 'admin' };
-const DEMO_USER   = { id: 'demo-user',   email: 'user@swiggy.com',   password: 'user123',   name: 'Demo User',   role: 'user'  };
-const DEMO_ACCOUNTS = [DEMO_ADMIN, DEMO_USER];
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  const applyDemoSession = (acc) => {
-    const p = { id: acc.id, email: acc.email, name: acc.name, role: acc.role };
-    setUser(p);
-    setProfile(p);
-    localStorage.setItem('demo-session', JSON.stringify(p));
-  };
 
   const fetchProfile = async (userId) => {
     try {
@@ -28,30 +16,19 @@ export const AuthProvider = ({ children }) => {
     } catch { return null; }
   };
 
-  // ── Init — check localStorage FIRST, instant, no network ─────────────────
+  // ── Init — check localStorage for real session ───────────────────────────
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
-      // 1. Check saved demo session instantly (no network)
-      const saved = localStorage.getItem('demo-session');
-      if (saved) {
-        try {
-          const p = JSON.parse(saved);
-          if (mounted) { setUser(p); setProfile(p); setLoading(false); }
-          return; // done — no need to hit Supabase
-        } catch { localStorage.removeItem('demo-session'); }
-      }
-
-      // 2. Check saved Supabase token (no network, just localStorage)
+      // Check saved Supabase token (just localStorage check)
       const sbToken = localStorage.getItem('sb-token');
       if (!sbToken) {
-        // No session of any kind — go to login
         if (mounted) setLoading(false);
         return;
       }
 
-      // 3. Only if we have a real token, try Supabase (3s timeout)
+      // Try Supabase (3s timeout)
       try {
         const timeout = new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3000));
         const { data: { session } } = await Promise.race([supabase.auth.getSession(), timeout]);
@@ -62,8 +39,8 @@ export const AuthProvider = ({ children }) => {
           localStorage.removeItem('sb-token');
         }
       } catch {
-        // Supabase unreachable — clear stale token
-        localStorage.removeItem('sb-token');
+        // Fallback: use stale session if network is just temporarily down
+        // but for a clean app we'll let it be.
       } finally {
         if (mounted) setLoading(false);
       }
@@ -71,9 +48,8 @@ export const AuthProvider = ({ children }) => {
 
     init();
 
-    // Listen for real Supabase auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted || localStorage.getItem('demo-session')) return;
+      if (!mounted) return;
       if (session) {
         setUser(session.user);
         localStorage.setItem('sb-token', session.access_token);
@@ -81,6 +57,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         setUser(null); setProfile(null);
         localStorage.removeItem('sb-token');
+        localStorage.removeItem('demo-session');
       }
     });
 
@@ -89,28 +66,21 @@ export const AuthProvider = ({ children }) => {
 
   // ── Auth methods ──────────────────────────────────────────────────────────
   const signIn = async ({ email, password }) => {
-    // Demo accounts — instant, no network required
-    const demo = DEMO_ACCOUNTS.find(
-      a => a.email.toLowerCase() === email.toLowerCase() && a.password === password
-    );
-    if (demo) { applyDemoSession(demo); return { user: demo }; }
-
-    // Real Supabase login
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         if (error.message.includes('Email not confirmed')) {
-          throw new Error('Please verify your email or use the Demo Credentials above.');
+          throw new Error('Please verify your email to log in.');
         }
         if (error.message.includes('Invalid login credentials')) {
-          throw new Error('Invalid email or password. Try the Demo Credentials!');
+          throw new Error('Invalid email or password.');
         }
         throw error;
       }
       return data;
     } catch (err) {
       if (err.message?.includes('fetch') || err.message?.includes('network')) {
-        throw new Error('Server connection slow. Please use Demo Credentials for now.');
+        throw new Error('Connection error. Please check your internet.');
       }
       throw err;
     }
@@ -127,7 +97,6 @@ export const AuthProvider = ({ children }) => {
         }], { onConflict: 'id' });
       }
 
-      // If email confirmation is ON, users won't be logged in yet
       if (data.session) {
         return data;
       } else {
@@ -135,7 +104,7 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       if (err.message?.includes('fetch') || err.message?.includes('network')) {
-        throw new Error('Cannot connect. Try demo login: user@swiggy.com / user123');
+        throw new Error('Connection error. Please try again later.');
       }
       throw err;
     }
@@ -151,20 +120,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
-    localStorage.removeItem('demo-session');
     localStorage.removeItem('sb-token');
+    localStorage.removeItem('demo-session');
     try { await supabase.auth.signOut(); } catch {}
     setUser(null);
     setProfile(null);
   };
 
   const updateProfile = async (updates) => {
-    if (user?.id?.startsWith('demo-')) {
-      const updated = { ...profile, ...updates };
-      setProfile(updated);
-      localStorage.setItem('demo-session', JSON.stringify(updated));
-      return updated;
-    }
     const { data, error } = await supabase
       .from('profiles').update(updates).eq('id', user.id).select().single();
     if (error) throw error;
